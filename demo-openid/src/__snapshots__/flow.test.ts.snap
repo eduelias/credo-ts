@@ -1,0 +1,18 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Testing the happy path should run the happy path 1`] = `
+{
+  "body": "<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot POST /siop/6978131a-5558-4df5-b78c-4512679114a8/authorize</pre>
+</body>
+</html>
+",
+  "status": 404,
+}
+`;
