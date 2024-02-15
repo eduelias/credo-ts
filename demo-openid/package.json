@@ -12,7 +12,9 @@
     "issuer": "ts-node src/IssuerInquirer.ts",
     "holder": "ts-node src/HolderInquirer.ts",
     "verifier": "ts-node src/VerifierInquirer.ts",
-    "refresh": "rm -rf ./node_modules ./yarn.lock && yarn"
+    "refresh": "rm -rf ./node_modules ./yarn.lock && yarn",
+    "test": "jest --config jest.config.ts --detectOpenHandles --forceExit",
+    "test:update": "jest --config jest.config.ts --detectOpenHandles --forceExit --updateSnapshot"
   },
   "dependencies": {
     "@hyperledger/anoncreds-nodejs": "^0.2.0",

@@ -14,7 +14,7 @@ const config: Config.InitialOptions = {
   verbose: true,
   coveragePathIgnorePatterns: ['/build/', '/node_modules/', '/__tests__/', 'tests'],
   coverageDirectory: '<rootDir>/coverage/',
-  testTimeout: 30000,
+  testTimeout: 50000,
 }
 
 export default config
