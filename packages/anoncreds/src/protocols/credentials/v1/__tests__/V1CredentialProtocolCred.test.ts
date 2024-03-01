@@ -24,6 +24,7 @@ import {
   CredentialEventTypes,
   AckStatus,
   CredentialProblemReportReason,
+  CredentialRole,
 } from '@credo-ts/core'
 import { Subject } from 'rxjs'
 
@@ -67,7 +68,7 @@ const connectionService = new ConnectionServiceMock()
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-legacyIndyCredentialFormatService.credentialRecordType = 'anoncreds'
+legacyIndyCredentialFormatService.credentialRecordType = 'w3c'
 
 const connection = getMockConnection({
   id: '123',
@@ -152,6 +153,7 @@ const getAgentMessageMock = async (agentContext: AgentContext, options: { messag
 // object to test our service would behave correctly. We use type assertion for `offer` attribute to `any`.
 const mockCredentialRecord = ({
   state,
+  role,
   threadId,
   connectionId,
   tags,
@@ -159,6 +161,7 @@ const mockCredentialRecord = ({
   credentialAttributes,
 }: {
   state?: CredentialState
+  role?: CredentialRole
   tags?: CustomCredentialTags
   threadId?: string
   connectionId?: string
@@ -170,11 +173,12 @@ const mockCredentialRecord = ({
     id,
     credentialAttributes: credentialAttributes || credentialPreview.attributes,
     state: state || CredentialState.OfferSent,
+    role: role || CredentialRole.Issuer,
     threadId: threadId ?? '809dd7ec-f0e7-4b97-9231-7a3615af6139',
     connectionId: connectionId ?? '123',
     credentials: [
       {
-        credentialRecordType: 'anoncreds',
+        credentialRecordType: 'w3c',
         credentialRecordId: '123456',
       },
     ],
@@ -524,6 +528,7 @@ describe('V1CredentialProtocol', () => {
         attachment: credentialAttachment,
         credentialRecord,
         requestAttachment: expect.any(Attachment),
+        offerAttachment: expect.any(Attachment),
       })
     })
   })

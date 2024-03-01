@@ -33,14 +33,13 @@ import type {
 
 import { Protocol } from '../../../../agent/models'
 import { CredoError } from '../../../../error'
-import { DidCommMessageRepository } from '../../../../storage'
+import { DidCommMessageRepository, DidCommMessageRole } from '../../../../storage/didcomm'
 import { uuid } from '../../../../utils/uuid'
 import { AckStatus } from '../../../common'
 import { ConnectionService } from '../../../connections'
-import { V2ProposeCredentialMessage } from '../../../credentials'
 import { ProofsModuleConfig } from '../../ProofsModuleConfig'
 import { PresentationProblemReportReason } from '../../errors/PresentationProblemReportReason'
-import { AutoAcceptProof, ProofState } from '../../models'
+import { AutoAcceptProof, ProofRole, ProofState } from '../../models'
 import { ProofExchangeRecord, ProofRepository } from '../../repository'
 import { composeAutoAccept } from '../../utils'
 import { BaseProofProtocol } from '../BaseProofProtocol'
@@ -122,6 +121,7 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
       threadId: uuid(),
       parentThreadId,
       state: ProofState.ProposalSent,
+      role: ProofRole.Prover,
       protocolVersion: 'v2',
       autoAcceptProof,
     })
@@ -178,10 +178,12 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
       const lastReceivedMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V2ProposePresentationMessage,
+        role: DidCommMessageRole.Receiver,
       })
       const lastSentMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V2RequestPresentationMessage,
+        role: DidCommMessageRole.Sender,
       })
 
       // Assert
@@ -210,6 +212,7 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
         connectionId: connection?.id,
         threadId: proposalMessage.threadId,
         state: ProofState.ProposalReceived,
+        role: ProofRole.Verifier,
         protocolVersion: 'v2',
         parentThreadId: proposalMessage.thread?.parentThreadId,
       })
@@ -255,6 +258,7 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
       const proposalMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V2ProposePresentationMessage,
+        role: DidCommMessageRole.Receiver,
       })
 
       formatServices = this.getFormatServicesFromMessage(proposalMessage.formats)
@@ -366,6 +370,7 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
       connectionId: connectionRecord?.id,
       threadId: uuid(),
       state: ProofState.RequestSent,
+      role: ProofRole.Verifier,
       autoAcceptProof,
       protocolVersion: 'v2',
       parentThreadId,
@@ -426,12 +431,14 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
     if (proofRecord) {
       const lastSentMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
         associatedRecordId: proofRecord.id,
-        messageClass: V2ProposeCredentialMessage,
+        messageClass: V2ProposePresentationMessage,
+        role: DidCommMessageRole.Sender,
       })
 
       const lastReceivedMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V2RequestPresentationMessage,
+        role: DidCommMessageRole.Receiver,
       })
 
       // Assert
@@ -460,6 +467,7 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
         connectionId: connection?.id,
         threadId: requestMessage.threadId,
         state: ProofState.RequestReceived,
+        role: ProofRole.Prover,
         protocolVersion: 'v2',
         parentThreadId: requestMessage.thread?.parentThreadId,
       })
@@ -498,6 +506,7 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
       const requestMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V2RequestPresentationMessage,
+        role: DidCommMessageRole.Receiver,
       })
 
       formatServices = this.getFormatServicesFromMessage(requestMessage.formats)
@@ -536,7 +545,7 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
   public async negotiateRequest(
     agentContext: AgentContext,
     { proofRecord, proofFormats, autoAcceptProof, comment, goalCode, goal }: NegotiateProofRequestOptions<PFs>
-  ): Promise<ProofProtocolMsgReturnType<V2ProposeCredentialMessage>> {
+  ): Promise<ProofProtocolMsgReturnType<V2ProposePresentationMessage>> {
     // Assert
     proofRecord.assertProtocolVersion('v2')
     proofRecord.assertState(ProofState.RequestReceived)
@@ -586,6 +595,7 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
       const requestMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V2RequestPresentationMessage,
+        role: DidCommMessageRole.Receiver,
       })
 
       formatServices = this.getFormatServicesFromMessage(requestMessage.formats)
@@ -629,6 +639,7 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
       const requestMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V2RequestPresentationMessage,
+        role: DidCommMessageRole.Receiver,
       })
 
       formatServices = this.getFormatServicesFromMessage(requestMessage.formats)
@@ -668,11 +679,13 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
     const lastSentMessage = await didCommMessageRepository.getAgentMessage(messageContext.agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V2RequestPresentationMessage,
+      role: DidCommMessageRole.Sender,
     })
 
     const lastReceivedMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V2ProposePresentationMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     // Assert
@@ -737,6 +750,7 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
     const presentation = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V2PresentationMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     if (!presentation.lastPresentation) {
@@ -783,11 +797,13 @@ export class V2ProofProtocol<PFs extends ProofFormatService[] = ProofFormatServi
     const lastReceivedMessage = await didCommMessageRepository.getAgentMessage(messageContext.agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V2RequestPresentationMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     const lastSentMessage = await didCommMessageRepository.getAgentMessage(messageContext.agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V2PresentationMessage,
+      role: DidCommMessageRole.Sender,
     })
 
     // Assert
