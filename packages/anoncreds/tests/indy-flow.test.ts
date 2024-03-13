@@ -2,19 +2,25 @@ import type { AnonCredsCredentialRequest } from '@credo-ts/anoncreds'
 import type { Wallet } from '@credo-ts/core'
 
 import {
+  CredentialRole,
+  ProofRole,
   CredentialState,
   CredentialExchangeRecord,
   CredentialPreviewAttribute,
   InjectionSymbols,
   ProofState,
   ProofExchangeRecord,
+  SignatureSuiteToken,
+  W3cCredentialsModuleConfig,
+  DidResolverService,
+  DidsModuleConfig,
 } from '@credo-ts/core'
 import { Subject } from 'rxjs'
 
 import { InMemoryStorageService } from '../../../tests/InMemoryStorageService'
 import { AnonCredsRegistryService } from '../../anoncreds/src/services/registry/AnonCredsRegistryService'
 import { InMemoryAnonCredsRegistry } from '../../anoncreds/tests/InMemoryAnonCredsRegistry'
-import { agentDependencies, getAgentConfig, getAgentContext } from '../../core/tests/helpers'
+import { agentDependencies, getAgentConfig, getAgentContext, testLogger } from '../../core/tests'
 import { AnonCredsRsVerifierService, AnonCredsRsIssuerService, AnonCredsRsHolderService } from '../src/anoncreds-rs'
 
 import { anoncreds } from './helpers'
@@ -65,7 +71,11 @@ const agentContext = getAgentContext({
     [AnonCredsHolderServiceSymbol, anonCredsHolderService],
     [AnonCredsVerifierServiceSymbol, anonCredsVerifierService],
     [AnonCredsRegistryService, new AnonCredsRegistryService()],
+    [DidResolverService, new DidResolverService(testLogger, new DidsModuleConfig())],
+    [InjectionSymbols.Logger, testLogger],
+    [W3cCredentialsModuleConfig, new W3cCredentialsModuleConfig()],
     [AnonCredsModuleConfig, anonCredsModuleConfig],
+    [SignatureSuiteToken, 'default'],
   ],
   agentConfig,
   wallet,
@@ -175,12 +185,14 @@ describe('Legacy indy format services using anoncreds-rs', () => {
     const holderCredentialRecord = new CredentialExchangeRecord({
       protocolVersion: 'v1',
       state: CredentialState.ProposalSent,
+      role: CredentialRole.Holder,
       threadId: 'f365c1a5-2baf-4873-9432-fa87c888a0aa',
     })
 
     const issuerCredentialRecord = new CredentialExchangeRecord({
       protocolVersion: 'v1',
       state: CredentialState.ProposalReceived,
+      role: CredentialRole.Issuer,
       threadId: 'f365c1a5-2baf-4873-9432-fa87c888a0aa',
     })
 
@@ -264,31 +276,33 @@ describe('Legacy indy format services using anoncreds-rs', () => {
 
     // Holder processes and accepts credential
     await legacyIndyCredentialFormatService.processCredential(agentContext, {
+      offerAttachment,
       credentialRecord: holderCredentialRecord,
       attachment: credentialAttachment,
       requestAttachment,
     })
 
     expect(holderCredentialRecord.credentials).toEqual([
-      { credentialRecordType: 'anoncreds', credentialRecordId: expect.any(String) },
+      { credentialRecordType: 'w3c', credentialRecordId: expect.any(String) },
     ])
 
     const credentialId = holderCredentialRecord.credentials[0].credentialRecordId
     const anonCredsCredential = await anonCredsHolderService.getCredential(agentContext, {
-      credentialId,
+      id: credentialId,
     })
 
     expect(anonCredsCredential).toEqual({
       credentialId,
       attributes: {
-        age: '25',
+        age: 25,
         name: 'John',
       },
-      schemaId: unqualifiedSchemaId,
-      credentialDefinitionId: unqualifiedCredentialDefinitionId,
+      schemaId: schemaState.schemaId,
+      credentialDefinitionId: credentialDefinitionState.credentialDefinitionId,
       revocationRegistryId: null,
       credentialRevocationId: null,
       methodName: 'inMemory',
+      linkSecretId: 'linkSecretId',
     })
 
     expect(holderCredentialRecord.metadata.data).toEqual({
@@ -313,11 +327,13 @@ describe('Legacy indy format services using anoncreds-rs', () => {
     const holderProofRecord = new ProofExchangeRecord({
       protocolVersion: 'v1',
       state: ProofState.ProposalSent,
+      role: ProofRole.Prover,
       threadId: '4f5659a4-1aea-4f42-8c22-9a9985b35e38',
     })
     const verifierProofRecord = new ProofExchangeRecord({
       protocolVersion: 'v1',
       state: ProofState.ProposalReceived,
+      role: ProofRole.Verifier,
       threadId: '4f5659a4-1aea-4f42-8c22-9a9985b35e38',
     })
 

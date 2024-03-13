@@ -2,12 +2,18 @@ import type { AnonCredsCredentialRequest } from '@credo-ts/anoncreds'
 import type { Wallet } from '@credo-ts/core'
 
 import {
-  CredentialState,
-  CredentialExchangeRecord,
-  CredentialPreviewAttribute,
+  CredentialRole,
+  ProofRole,
   InjectionSymbols,
   ProofState,
   ProofExchangeRecord,
+  CredentialExchangeRecord,
+  CredentialPreviewAttribute,
+  CredentialState,
+  DidResolverService,
+  DidsModuleConfig,
+  SignatureSuiteToken,
+  W3cCredentialsModuleConfig,
 } from '@credo-ts/core'
 import { Subject } from 'rxjs'
 
@@ -15,34 +21,34 @@ import { InMemoryStorageService } from '../../../tests/InMemoryStorageService'
 import { AnonCredsRegistryService } from '../../anoncreds/src/services/registry/AnonCredsRegistryService'
 import { dateToTimestamp } from '../../anoncreds/src/utils/timestamp'
 import { InMemoryAnonCredsRegistry } from '../../anoncreds/tests/InMemoryAnonCredsRegistry'
-import { agentDependencies, getAgentConfig, getAgentContext } from '../../core/tests/helpers'
+import { agentDependencies, getAgentConfig, getAgentContext, testLogger } from '../../core/tests'
 import { AnonCredsRsHolderService, AnonCredsRsIssuerService, AnonCredsRsVerifierService } from '../src/anoncreds-rs'
 
 import { InMemoryTailsFileService } from './InMemoryTailsFileService'
 import { anoncreds } from './helpers'
 
 import {
+  AnonCredsCredentialDefinitionPrivateRecord,
+  AnonCredsCredentialDefinitionPrivateRepository,
+  AnonCredsCredentialDefinitionRecord,
+  AnonCredsCredentialDefinitionRepository,
+  AnonCredsCredentialFormatService,
+  AnonCredsHolderServiceSymbol,
+  AnonCredsIssuerServiceSymbol,
+  AnonCredsKeyCorrectnessProofRecord,
+  AnonCredsKeyCorrectnessProofRepository,
+  AnonCredsLinkSecretRecord,
+  AnonCredsLinkSecretRepository,
+  AnonCredsModuleConfig,
+  AnonCredsProofFormatService,
   AnonCredsRevocationRegistryDefinitionPrivateRecord,
   AnonCredsRevocationRegistryDefinitionPrivateRepository,
   AnonCredsRevocationRegistryDefinitionRecord,
   AnonCredsRevocationRegistryDefinitionRepository,
   AnonCredsRevocationRegistryState,
-  AnonCredsModuleConfig,
-  AnonCredsHolderServiceSymbol,
-  AnonCredsIssuerServiceSymbol,
-  AnonCredsVerifierServiceSymbol,
   AnonCredsSchemaRecord,
   AnonCredsSchemaRepository,
-  AnonCredsCredentialDefinitionRepository,
-  AnonCredsCredentialDefinitionRecord,
-  AnonCredsCredentialDefinitionPrivateRepository,
-  AnonCredsCredentialDefinitionPrivateRecord,
-  AnonCredsKeyCorrectnessProofRepository,
-  AnonCredsKeyCorrectnessProofRecord,
-  AnonCredsLinkSecretRepository,
-  AnonCredsLinkSecretRecord,
-  AnonCredsProofFormatService,
-  AnonCredsCredentialFormatService,
+  AnonCredsVerifierServiceSymbol,
 } from '@credo-ts/anoncreds'
 
 const registry = new InMemoryAnonCredsRegistry()
@@ -61,6 +67,7 @@ const anonCredsIssuerService = new AnonCredsRsIssuerService()
 const wallet = { generateNonce: () => Promise.resolve('947121108704767252195123') } as Wallet
 
 const inMemoryStorageService = new InMemoryStorageService()
+
 const agentContext = getAgentContext({
   registerInstances: [
     [InjectionSymbols.Stop$, new Subject<boolean>()],
@@ -70,8 +77,12 @@ const agentContext = getAgentContext({
     [AnonCredsIssuerServiceSymbol, anonCredsIssuerService],
     [AnonCredsHolderServiceSymbol, anonCredsHolderService],
     [AnonCredsVerifierServiceSymbol, anonCredsVerifierService],
+    [InjectionSymbols.Logger, testLogger],
+    [DidResolverService, new DidResolverService(testLogger, new DidsModuleConfig())],
     [AnonCredsRegistryService, new AnonCredsRegistryService()],
     [AnonCredsModuleConfig, anonCredsModuleConfig],
+    [W3cCredentialsModuleConfig, new W3cCredentialsModuleConfig()],
+    [SignatureSuiteToken, 'default'],
   ],
   agentConfig,
   wallet,
@@ -251,12 +262,14 @@ async function anonCredsFlowTest(options: { issuerId: string; revocable: boolean
     protocolVersion: 'v1',
     state: CredentialState.ProposalSent,
     threadId: 'f365c1a5-2baf-4873-9432-fa87c888a0aa',
+    role: CredentialRole.Holder,
   })
 
   const issuerCredentialRecord = new CredentialExchangeRecord({
     protocolVersion: 'v1',
     state: CredentialState.ProposalReceived,
     threadId: 'f365c1a5-2baf-4873-9432-fa87c888a0aa',
+    role: CredentialRole.Issuer,
   })
 
   const credentialAttributes = [
@@ -333,26 +346,28 @@ async function anonCredsFlowTest(options: { issuerId: string; revocable: boolean
 
   // Holder processes and accepts credential
   await anoncredsCredentialFormatService.processCredential(agentContext, {
+    offerAttachment,
     credentialRecord: holderCredentialRecord,
     attachment: credentialAttachment,
     requestAttachment,
   })
 
   expect(holderCredentialRecord.credentials).toEqual([
-    { credentialRecordType: 'anoncreds', credentialRecordId: expect.any(String) },
+    { credentialRecordType: 'w3c', credentialRecordId: expect.any(String) },
   ])
 
   const credentialId = holderCredentialRecord.credentials[0].credentialRecordId
   const anonCredsCredential = await anonCredsHolderService.getCredential(agentContext, {
-    credentialId,
+    id: credentialId,
   })
 
   expect(anonCredsCredential).toEqual({
     credentialId,
     attributes: {
-      age: '25',
+      age: 25,
       name: 'John',
     },
+    linkSecretId: 'linkSecretId',
     schemaId: schemaState.schemaId,
     credentialDefinitionId: credentialDefinitionState.credentialDefinitionId,
     revocationRegistryId: revocable ? revocationRegistryDefinitionId : null,
@@ -388,11 +403,13 @@ async function anonCredsFlowTest(options: { issuerId: string; revocable: boolean
     protocolVersion: 'v1',
     state: ProofState.ProposalSent,
     threadId: '4f5659a4-1aea-4f42-8c22-9a9985b35e38',
+    role: ProofRole.Prover,
   })
   const verifierProofRecord = new ProofExchangeRecord({
     protocolVersion: 'v1',
     state: ProofState.ProposalReceived,
     threadId: '4f5659a4-1aea-4f42-8c22-9a9985b35e38',
+    role: ProofRole.Verifier,
   })
 
   const nrpRequestedTime = dateToTimestamp(new Date())

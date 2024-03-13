@@ -12,6 +12,7 @@ import type {
 } from '@credo-ts/core'
 
 import {
+  CredentialRole,
   Protocol,
   CredentialRepository,
   CredoError,
@@ -136,6 +137,7 @@ export class V1CredentialProtocol
       connectionId: connectionRecord.id,
       threadId: utils.uuid(),
       state: CredentialState.ProposalSent,
+      role: CredentialRole.Holder,
       linkedAttachments: linkedAttachments?.map((linkedAttachment) => linkedAttachment.attachment),
       autoAcceptCredential,
       protocolVersion: 'v1',
@@ -201,11 +203,11 @@ export class V1CredentialProtocol
 
     agentContext.config.logger.debug(`Processing credential proposal with message id ${proposalMessage.id}`)
 
-    let credentialRecord = await this.findByThreadAndConnectionId(
-      messageContext.agentContext,
-      proposalMessage.threadId,
-      connection?.id
-    )
+    let credentialRecord = await this.findByProperties(messageContext.agentContext, {
+      threadId: proposalMessage.threadId,
+      role: CredentialRole.Issuer,
+      connectionId: connection?.id,
+    })
 
     // Credential record already exists, this is a response to an earlier message sent by us
     if (credentialRecord) {
@@ -218,10 +220,12 @@ export class V1CredentialProtocol
       const lastReceivedMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
         associatedRecordId: credentialRecord.id,
         messageClass: V1ProposeCredentialMessage,
+        role: DidCommMessageRole.Receiver,
       })
       const lastSentMessage = await didCommMessageRepository.getAgentMessage(messageContext.agentContext, {
         associatedRecordId: credentialRecord.id,
         messageClass: V1OfferCredentialMessage,
+        role: DidCommMessageRole.Sender,
       })
 
       await connectionService.assertConnectionOrOutOfBandExchange(messageContext, {
@@ -253,6 +257,7 @@ export class V1CredentialProtocol
         connectionId: connection?.id,
         threadId: proposalMessage.threadId,
         state: CredentialState.ProposalReceived,
+        role: CredentialRole.Issuer,
         protocolVersion: 'v1',
       })
 
@@ -296,6 +301,7 @@ export class V1CredentialProtocol
     const proposalMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: credentialRecord.id,
       messageClass: V1ProposeCredentialMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     // NOTE: We set the credential attributes from the proposal on the record as we've 'accepted' them
@@ -434,6 +440,7 @@ export class V1CredentialProtocol
         (linkedAttachments) => linkedAttachments.attachment
       ),
       state: CredentialState.OfferSent,
+      role: CredentialRole.Issuer,
       autoAcceptCredential,
       protocolVersion: 'v1',
     })
@@ -496,7 +503,11 @@ export class V1CredentialProtocol
 
     agentContext.config.logger.debug(`Processing credential offer with id ${offerMessage.id}`)
 
-    let credentialRecord = await this.findByThreadAndConnectionId(agentContext, offerMessage.threadId, connection?.id)
+    let credentialRecord = await this.findByProperties(agentContext, {
+      threadId: offerMessage.threadId,
+      role: CredentialRole.Holder,
+      connectionId: connection?.id,
+    })
 
     const offerAttachment = offerMessage.getOfferAttachmentById(INDY_CREDENTIAL_OFFER_ATTACHMENT_ID)
     if (!offerAttachment) {
@@ -507,10 +518,12 @@ export class V1CredentialProtocol
       const lastSentMessage = await didCommMessageRepository.getAgentMessage(messageContext.agentContext, {
         associatedRecordId: credentialRecord.id,
         messageClass: V1ProposeCredentialMessage,
+        role: DidCommMessageRole.Sender,
       })
       const lastReceivedMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
         associatedRecordId: credentialRecord.id,
         messageClass: V1OfferCredentialMessage,
+        role: DidCommMessageRole.Receiver,
       })
 
       // Assert
@@ -541,6 +554,7 @@ export class V1CredentialProtocol
         threadId: offerMessage.threadId,
         parentThreadId: offerMessage.thread?.parentThreadId,
         state: CredentialState.OfferReceived,
+        role: CredentialRole.Holder,
         protocolVersion: 'v1',
       })
 
@@ -590,6 +604,7 @@ export class V1CredentialProtocol
     const offerMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: credentialRecord.id,
       messageClass: V1OfferCredentialMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     const offerAttachment = offerMessage.getOfferAttachmentById(INDY_CREDENTIAL_OFFER_ATTACHMENT_ID)
@@ -728,16 +743,22 @@ export class V1CredentialProtocol
 
     agentContext.config.logger.debug(`Processing credential request with id ${requestMessage.id}`)
 
-    const credentialRecord = await this.getByThreadAndConnectionId(messageContext.agentContext, requestMessage.threadId)
+    const credentialRecord = await this.getByProperties(messageContext.agentContext, {
+      threadId: requestMessage.threadId,
+      role: CredentialRole.Issuer,
+    })
+
     agentContext.config.logger.trace('Credential record found when processing credential request', credentialRecord)
 
     const proposalMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
       associatedRecordId: credentialRecord.id,
       messageClass: V1ProposeCredentialMessage,
+      role: DidCommMessageRole.Receiver,
     })
     const offerMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
       associatedRecordId: credentialRecord.id,
       messageClass: V1OfferCredentialMessage,
+      role: DidCommMessageRole.Sender,
     })
 
     // Assert
@@ -806,10 +827,12 @@ export class V1CredentialProtocol
     const offerMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: credentialRecord.id,
       messageClass: V1OfferCredentialMessage,
+      role: DidCommMessageRole.Sender,
     })
     const requestMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: credentialRecord.id,
       messageClass: V1RequestCredentialMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     const offerAttachment = offerMessage.getOfferAttachmentById(INDY_CREDENTIAL_OFFER_ATTACHMENT_ID)
@@ -870,19 +893,21 @@ export class V1CredentialProtocol
     // only depends on the public api, rather than the internal API (this helps with breaking changes)
     const connectionService = agentContext.dependencyManager.resolve(ConnectionService)
 
-    const credentialRecord = await this.getByThreadAndConnectionId(
-      messageContext.agentContext,
-      issueMessage.threadId,
-      connection?.id
-    )
+    const credentialRecord = await this.getByProperties(messageContext.agentContext, {
+      threadId: issueMessage.threadId,
+      role: CredentialRole.Holder,
+      connectionId: connection?.id,
+    })
 
     const requestCredentialMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
       associatedRecordId: credentialRecord.id,
       messageClass: V1RequestCredentialMessage,
+      role: DidCommMessageRole.Sender,
     })
     const offerCredentialMessage = await didCommMessageRepository.findAgentMessage(messageContext.agentContext, {
       associatedRecordId: credentialRecord.id,
       messageClass: V1OfferCredentialMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     // Assert
@@ -903,7 +928,13 @@ export class V1CredentialProtocol
       throw new CredoError('Missing indy credential request attachment in processCredential')
     }
 
+    const offerAttachment = offerCredentialMessage?.getOfferAttachmentById(INDY_CREDENTIAL_OFFER_ATTACHMENT_ID)
+    if (!offerAttachment) {
+      throw new CredoError('Missing indy credential request attachment in processCredential')
+    }
+
     await this.indyCredentialFormat.processCredential(messageContext.agentContext, {
+      offerAttachment,
       attachment: issueAttachment,
       credentialRecord,
       requestAttachment,
@@ -967,19 +998,22 @@ export class V1CredentialProtocol
     // only depends on the public api, rather than the internal API (this helps with breaking changes)
     const connectionService = agentContext.dependencyManager.resolve(ConnectionService)
 
-    const credentialRecord = await this.getByThreadAndConnectionId(
-      messageContext.agentContext,
-      ackMessage.threadId,
-      connection?.id
-    )
+    const credentialRecord = await this.getByProperties(messageContext.agentContext, {
+      threadId: ackMessage.threadId,
+
+      role: CredentialRole.Issuer,
+      connectionId: connection?.id,
+    })
 
     const requestCredentialMessage = await didCommMessageRepository.getAgentMessage(messageContext.agentContext, {
       associatedRecordId: credentialRecord.id,
       messageClass: V1RequestCredentialMessage,
+      role: DidCommMessageRole.Receiver,
     })
     const issueCredentialMessage = await didCommMessageRepository.getAgentMessage(messageContext.agentContext, {
       associatedRecordId: credentialRecord.id,
       messageClass: V1IssueCredentialMessage,
+      role: DidCommMessageRole.Sender,
     })
 
     // Assert
@@ -1004,7 +1038,7 @@ export class V1CredentialProtocol
    *
    */
   public async createProblemReport(
-    agentContext: AgentContext,
+    _agentContext: AgentContext,
     { credentialRecord, description }: CredentialProtocolOptions.CreateCredentialProblemReportOptions
   ): Promise<CredentialProtocolOptions.CredentialProtocolMsgReturnType<ProblemReportMessage>> {
     const message = new V1CredentialProblemReportMessage({

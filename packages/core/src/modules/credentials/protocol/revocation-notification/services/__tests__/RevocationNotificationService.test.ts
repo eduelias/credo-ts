@@ -1,10 +1,10 @@
-import type { AnonCredsCredentialMetadata } from '../../../../../../../../anoncreds/src/utils/metadata'
 import type { AgentContext } from '../../../../../../agent'
 import type { RevocationNotificationReceivedEvent } from '../../../../CredentialEvents'
+import type { AnonCredsCredentialMetadata } from '@credo-ts/anoncreds'
 
 import { Subject } from 'rxjs'
 
-import { CredentialExchangeRecord, CredentialState, InboundMessageContext } from '../../../../../..'
+import { CredentialExchangeRecord, CredentialRole, CredentialState, InboundMessageContext } from '../../../../../..'
 import { getAgentConfig, getAgentContext, getMockConnection, mockFunction } from '../../../../../../../tests/helpers'
 import { EventEmitter } from '../../../../../../agent/EventEmitter'
 import { MessageHandlerRegistry } from '../../../../../../agent/MessageHandlerRegistry'
@@ -68,6 +68,7 @@ describe('RevocationNotificationService', () => {
         threadId: 'thread-id',
         protocolVersion: 'v1',
         state: CredentialState.Done,
+        role: CredentialRole.Holder,
       })
 
       const metadata = {
@@ -181,13 +182,14 @@ describe('RevocationNotificationService', () => {
         threadId: 'thread-id',
         protocolVersion: 'v2',
         state: CredentialState.Done,
+        role: CredentialRole.Holder,
       })
 
       const metadata = {
         revocationRegistryId:
           'AsB27X6KRrJFsqZ3unNAH6:4:AsB27X6KRrJFsqZ3unNAH6:3:cl:48187:default:CL_ACCUM:3b24a9b0-a979-41e0-9964-2292f2b1b7e9',
         credentialRevocationId: '1',
-      } satisfies AnonCredsCredentialMetadata
+      }
 
       mockFunction(credentialRepository.getSingleByQuery).mockResolvedValueOnce(credentialRecord)
       const revocationNotificationCredentialId = `${metadata.revocationRegistryId}::${metadata.credentialRevocationId}`

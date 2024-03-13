@@ -13,6 +13,7 @@ import type {
 } from '@credo-ts/core'
 
 import {
+  ProofRole,
   BaseProofProtocol,
   Protocol,
   ProofRepository,
@@ -139,6 +140,7 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
       threadId: message.threadId,
       parentThreadId: message.thread?.parentThreadId,
       state: ProofState.ProposalSent,
+      role: ProofRole.Prover,
       autoAcceptProof,
       protocolVersion: 'v1',
     })
@@ -169,7 +171,11 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
 
     agentContext.config.logger.debug(`Processing presentation proposal with message id ${proposalMessage.id}`)
 
-    let proofRecord = await this.findByThreadAndConnectionId(agentContext, proposalMessage.threadId, connection?.id)
+    let proofRecord = await this.findByProperties(agentContext, {
+      threadId: proposalMessage.threadId,
+      role: ProofRole.Verifier,
+      connectionId: connection?.id,
+    })
 
     // Proof record already exists, this is a response to an earlier message sent by us
     if (proofRecord) {
@@ -182,10 +188,12 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
       const lastReceivedMessage = await didCommMessageRepository.findAgentMessage(agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V1ProposePresentationMessage,
+        role: DidCommMessageRole.Receiver,
       })
       const lastSentMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V1RequestPresentationMessage,
+        role: DidCommMessageRole.Sender,
       })
       await connectionService.assertConnectionOrOutOfBandExchange(messageContext, {
         lastReceivedMessage,
@@ -200,7 +208,7 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
       })
       await this.updateState(agentContext, proofRecord, ProofState.ProposalReceived)
     } else {
-      agentContext.config.logger.debug('Proof record does not exists yet for incoming proposal')
+      agentContext.config.logger.debug('Proof record does not exist yet for incoming proposal')
 
       // No proof record exists with thread id
       proofRecord = new ProofExchangeRecord({
@@ -208,6 +216,7 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
         threadId: proposalMessage.threadId,
         parentThreadId: proposalMessage.thread?.parentThreadId,
         state: ProofState.ProposalReceived,
+        role: ProofRole.Verifier,
         protocolVersion: 'v1',
       })
 
@@ -217,7 +226,7 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
       await didCommMessageRepository.saveOrUpdateAgentMessage(agentContext, {
         agentMessage: proposalMessage,
         associatedRecordId: proofRecord.id,
-        role: DidCommMessageRole.Sender,
+        role: DidCommMessageRole.Receiver,
       })
 
       // Save record
@@ -247,6 +256,7 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
     const proposalMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1ProposePresentationMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     const indyFormat = proofFormats?.indy
@@ -366,6 +376,7 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
       threadId: utils.uuid(),
       parentThreadId,
       state: ProofState.RequestSent,
+      role: ProofRole.Verifier,
       autoAcceptProof,
       protocolVersion: 'v1',
     })
@@ -415,7 +426,11 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
 
     agentContext.config.logger.debug(`Processing presentation request with id ${proofRequestMessage.id}`)
 
-    let proofRecord = await this.findByThreadAndConnectionId(agentContext, proofRequestMessage.threadId, connection?.id)
+    let proofRecord = await this.findByProperties(agentContext, {
+      threadId: proofRequestMessage.threadId,
+      role: ProofRole.Prover,
+      connectionId: connection?.id,
+    })
 
     const requestAttachment = proofRequestMessage.getRequestAttachmentById(INDY_PROOF_REQUEST_ATTACHMENT_ID)
     if (!requestAttachment) {
@@ -427,10 +442,12 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
       const lastReceivedMessage = await didCommMessageRepository.findAgentMessage(agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V1RequestPresentationMessage,
+        role: DidCommMessageRole.Receiver,
       })
       const lastSentMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
         associatedRecordId: proofRecord.id,
         messageClass: V1ProposePresentationMessage,
+        role: DidCommMessageRole.Sender,
       })
 
       // Assert
@@ -459,6 +476,7 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
         threadId: proofRequestMessage.threadId,
         parentThreadId: proofRequestMessage.thread?.parentThreadId,
         state: ProofState.RequestReceived,
+        role: ProofRole.Prover,
         protocolVersion: 'v1',
       })
 
@@ -555,10 +573,12 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
     const requestMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1RequestPresentationMessage,
+      role: DidCommMessageRole.Receiver,
     })
     const proposalMessage = await didCommMessageRepository.findAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1ProposePresentationMessage,
+      role: DidCommMessageRole.Sender,
     })
 
     const requestAttachment = requestMessage.getRequestAttachmentById(INDY_PROOF_REQUEST_ATTACHMENT_ID)
@@ -625,11 +645,13 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
     const requestMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1RequestPresentationMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     const proposalMessage = await didCommMessageRepository.findAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1ProposePresentationMessage,
+      role: DidCommMessageRole.Sender,
     })
 
     const requestAttachment = requestMessage.getRequestAttachmentById(INDY_PROOF_REQUEST_ATTACHMENT_ID)
@@ -685,11 +707,13 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
     const requestMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1RequestPresentationMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     const proposalMessage = await didCommMessageRepository.findAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1ProposePresentationMessage,
+      role: DidCommMessageRole.Sender,
     })
 
     const requestAttachment = requestMessage.getRequestAttachmentById(INDY_PROOF_REQUEST_ATTACHMENT_ID)
@@ -744,16 +768,21 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
     // only depends on the public api, rather than the internal API (this helps with breaking changes)
     const connectionService = agentContext.dependencyManager.resolve(ConnectionService)
 
-    const proofRecord = await this.getByThreadAndConnectionId(agentContext, presentationMessage.threadId)
+    const proofRecord = await this.getByProperties(agentContext, {
+      threadId: presentationMessage.threadId,
+      role: ProofRole.Verifier,
+    })
 
     const proposalMessage = await didCommMessageRepository.findAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1ProposePresentationMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     const requestMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1RequestPresentationMessage,
+      role: DidCommMessageRole.Sender,
     })
 
     // Assert
@@ -869,20 +898,22 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
     // only depends on the public api, rather than the internal API (this helps with breaking changes)
     const connectionService = agentContext.dependencyManager.resolve(ConnectionService)
 
-    const proofRecord = await this.getByThreadAndConnectionId(
-      agentContext,
-      presentationAckMessage.threadId,
-      connection?.id
-    )
+    const proofRecord = await this.getByProperties(agentContext, {
+      threadId: presentationAckMessage.threadId,
+      role: ProofRole.Prover,
+      connectionId: connection?.id,
+    })
 
     const lastReceivedMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1RequestPresentationMessage,
+      role: DidCommMessageRole.Receiver,
     })
 
     const lastSentMessage = await didCommMessageRepository.getAgentMessage(agentContext, {
       associatedRecordId: proofRecord.id,
       messageClass: V1PresentationMessage,
+      role: DidCommMessageRole.Sender,
     })
 
     // Assert
@@ -900,7 +931,7 @@ export class V1ProofProtocol extends BaseProofProtocol implements ProofProtocol<
   }
 
   public async createProblemReport(
-    agentContext: AgentContext,
+    _agentContext: AgentContext,
     { proofRecord, description }: ProofProtocolOptions.CreateProofProblemReportOptions
   ): Promise<ProofProtocolOptions.ProofProtocolMsgReturnType<ProblemReportMessage>> {
     const message = new V1PresentationProblemReportMessage({
