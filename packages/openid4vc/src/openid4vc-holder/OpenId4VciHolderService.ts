@@ -88,6 +88,8 @@ export class OpenId4VciHolderService {
       uri: credentialOffer,
       resolveOfferUri: true,
       retrieveServerMetadata: true,
+      // This is a separate call, so we don't fetch it here, however it may be easier to just construct it here?
+      createAuthorizationRequestURL: false,
     })
 
     if (!client.credentialOffer?.credential_offer) {
@@ -188,7 +190,7 @@ export class OpenId4VciHolderService {
       codeChallenge,
       redirectUri,
       credentialOffer: credentialOfferPayload,
-      codeChallengeMethod: CodeChallengeMethod.SHA256,
+      codeChallengeMethod: CodeChallengeMethod.S256,
       // TODO: Read HAIP SdJwtVc's should always be requested via scopes
       // TODO: should we now always use scopes instead of authDetails? or both????
       scope: scope ?? [],
@@ -524,16 +526,16 @@ export class OpenId4VciHolderService {
         )
 
       const sdJwtVcApi = agentContext.dependencyManager.resolve(SdJwtVcApi)
-      const { verification, sdJwtVc } = await sdJwtVcApi.verify({
+      const verificationResult = await sdJwtVcApi.verify({
         compactSdJwtVc: credentialResponse.successBody.credential,
       })
 
-      if (!verification.isValid) {
-        agentContext.config.logger.error('Failed to validate credential', { verification })
-        throw new CredoError(`Failed to validate sd-jwt-vc credential. Results = ${JSON.stringify(verification)}`)
+      if (!verificationResult.isValid) {
+        agentContext.config.logger.error('Failed to validate credential', { verificationResult })
+        throw new CredoError(`Failed to validate sd-jwt-vc credential. Results = ${JSON.stringify(verificationResult)}`)
       }
 
-      return sdJwtVc
+      return verificationResult.sdJwtVc
     } else if (
       format === OpenId4VciCredentialFormatProfile.JwtVcJson ||
       format === OpenId4VciCredentialFormatProfile.JwtVcJsonLd

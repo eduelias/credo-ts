@@ -31,3 +31,5 @@ export {
   AnonCredsCredentialRequestMetadata,
   W3cAnonCredsCredentialMetadata,
 } from './metadata'
+export { getW3cRecordAnonCredsTags } from './w3cAnonCredsUtils'
+export { getCredentialsForAnonCredsProofRequest } from './getCredentialsForAnonCredsRequest'

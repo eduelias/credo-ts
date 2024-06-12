@@ -32,6 +32,16 @@ export type CredentialProtocolVersionType<CPs extends CredentialProtocol[] = Cre
 interface BaseOptions {
   autoAcceptCredential?: AutoAcceptCredential
   comment?: string
+
+  /**
+   * Will be ignored for v1 protocol as it is not supported
+   */
+  goalCode?: string
+
+  /**
+   * Will be ignored for v1 protocol as it is not supported
+   */
+  goal?: string
 }
 
 /**
@@ -138,4 +148,26 @@ export interface SendRevocationNotificationOptions {
 export interface SendCredentialProblemReportOptions {
   credentialRecordId: string
   description: string
+}
+
+/**
+ * Interface for CredentialsApi.declineOffer. Decline a received credential offer and optionally send a problem-report message to Issuer.
+ */
+export interface DeclineCredentialOfferOptions {
+  // TODO: in next major release, move the id to this object as well
+  // for consistency with the proofs api
+  // credentialRecordId: string
+
+  /**
+   * Whether to send a problem-report message to the issuer as part
+   * of declining the credential offer
+   */
+  sendProblemReport?: boolean
+
+  /**
+   * Description to include in the problem-report message
+   * Only used if `sendProblemReport` is set to `true`.
+   * @default "Offer declined"
+   */
+  problemReportDescription?: string
 }
