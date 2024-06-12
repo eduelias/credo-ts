@@ -1,6 +1,6 @@
+import type { OpenId4VcVerificationSessionRecord } from './repository'
 import type {
   OpenId4VcJwtIssuer,
-  OpenId4VcSiopAuthorizationRequestPayload,
   OpenId4VcSiopAuthorizationResponsePayload,
   OpenId4VcSiopIdTokenPayload,
 } from '../shared'
@@ -19,6 +19,12 @@ export interface OpenId4VcSiopCreateAuthorizationRequestOptions {
   requestSigner: OpenId4VcJwtIssuer
 
   /**
+   * Whether to reuqest an ID Token. Enabled by defualt when `presentationExchange` is not provided,
+   * disabled by default when `presentationExchange` is provided.
+   */
+  idToken?: boolean
+
+  /**
    * A DIF Presentation Definition (v2) can be provided to request a Verifiable Presentation using OpenID4VP.
    */
   presentationExchange?: {
@@ -34,12 +40,12 @@ export interface OpenId4VcSiopVerifyAuthorizationResponseOptions {
 }
 
 export interface OpenId4VcSiopCreateAuthorizationRequestReturn {
-  authorizationRequestUri: string
-  authorizationRequestPayload: OpenId4VcSiopAuthorizationRequestPayload
+  authorizationRequest: string
+  verificationSession: OpenId4VcVerificationSessionRecord
 }
 
 /**
- * Either `idToken` and/or `presentationExchange` will be present, but not none.
+ * Either `idToken` and/or `presentationExchange` will be present.
  */
 export interface OpenId4VcSiopVerifiedAuthorizationResponse {
   idToken?: {
@@ -55,7 +61,7 @@ export interface OpenId4VcSiopVerifiedAuthorizationResponse {
 
 export interface OpenId4VcSiopCreateVerifierOptions {
   /**
-   * Id of the verifier, not the id of the verified record. Will be exposed publicly
+   * Id of the verifier, not the id of the verifier record. Will be exposed publicly
    */
   verifierId?: string
 }

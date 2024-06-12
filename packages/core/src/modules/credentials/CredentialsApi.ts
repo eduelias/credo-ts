@@ -16,12 +16,13 @@ import type {
   SendCredentialProblemReportOptions,
   DeleteCredentialOptions,
   SendRevocationNotificationOptions,
+  DeclineCredentialOfferOptions,
 } from './CredentialsApiOptions'
 import type { CredentialProtocol } from './protocol/CredentialProtocol'
 import type { CredentialFormatsFromProtocols } from './protocol/CredentialProtocolOptions'
 import type { CredentialExchangeRecord } from './repository/CredentialExchangeRecord'
 import type { AgentMessage } from '../../agent/AgentMessage'
-import type { Query } from '../../storage/StorageService'
+import type { Query, QueryOptions } from '../../storage/StorageService'
 
 import { AgentContext } from '../../agent'
 import { MessageSender } from '../../agent/MessageSender'
@@ -48,7 +49,7 @@ export interface CredentialsApi<CPs extends CredentialProtocol[]> {
   // Offer Credential Methods
   offerCredential(options: OfferCredentialOptions<CPs>): Promise<CredentialExchangeRecord>
   acceptOffer(options: AcceptCredentialOfferOptions<CPs>): Promise<CredentialExchangeRecord>
-  declineOffer(credentialRecordId: string): Promise<CredentialExchangeRecord>
+  declineOffer(credentialRecordId: string, options?: DeclineCredentialOfferOptions): Promise<CredentialExchangeRecord>
   negotiateOffer(options: NegotiateCredentialOfferOptions<CPs>): Promise<CredentialExchangeRecord>
 
   // Request Credential Methods
@@ -74,7 +75,10 @@ export interface CredentialsApi<CPs extends CredentialProtocol[]> {
 
   // Record Methods
   getAll(): Promise<CredentialExchangeRecord[]>
-  findAllByQuery(query: Query<CredentialExchangeRecord>): Promise<CredentialExchangeRecord[]>
+  findAllByQuery(
+    query: Query<CredentialExchangeRecord>,
+    queryOptions?: QueryOptions
+  ): Promise<CredentialExchangeRecord[]>
   getById(credentialRecordId: string): Promise<CredentialExchangeRecord>
   findById(credentialRecordId: string): Promise<CredentialExchangeRecord | null>
   deleteById(credentialRecordId: string, options?: DeleteCredentialOptions): Promise<void>
@@ -158,6 +162,8 @@ export class CredentialsApi<CPs extends CredentialProtocol[]> implements Credent
       credentialFormats: options.credentialFormats,
       comment: options.comment,
       autoAcceptCredential: options.autoAcceptCredential,
+      goalCode: options.goalCode,
+      goal: options.goal,
     })
 
     const outboundMessageContext = await getOutboundMessageContext(this.agentContext, {
@@ -200,6 +206,8 @@ export class CredentialsApi<CPs extends CredentialProtocol[]> implements Credent
       credentialFormats: options.credentialFormats,
       comment: options.comment,
       autoAcceptCredential: options.autoAcceptCredential,
+      goalCode: options.goalCode,
+      goal: options.goal,
     })
 
     // send the message
@@ -238,6 +246,8 @@ export class CredentialsApi<CPs extends CredentialProtocol[]> implements Credent
       credentialFormats: options.credentialFormats,
       comment: options.comment,
       autoAcceptCredential: options.autoAcceptCredential,
+      goalCode: options.goalCode,
+      goal: options.goal,
     })
 
     const connectionRecord = await this.connectionService.getById(this.agentContext, credentialRecord.connectionId)
@@ -269,6 +279,8 @@ export class CredentialsApi<CPs extends CredentialProtocol[]> implements Credent
       autoAcceptCredential: options.autoAcceptCredential,
       comment: options.comment,
       connectionRecord,
+      goalCode: options.goalCode,
+      goal: options.goal,
     })
 
     this.logger.debug('Offer Message successfully created; message= ', message)
@@ -311,6 +323,8 @@ export class CredentialsApi<CPs extends CredentialProtocol[]> implements Credent
       credentialFormats: options.credentialFormats,
       comment: options.comment,
       autoAcceptCredential: options.autoAcceptCredential,
+      goalCode: options.goalCode,
+      goal: options.goal,
     })
 
     const outboundMessageContext = await getOutboundMessageContext(this.agentContext, {
@@ -324,12 +338,22 @@ export class CredentialsApi<CPs extends CredentialProtocol[]> implements Credent
     return credentialRecord
   }
 
-  public async declineOffer(credentialRecordId: string): Promise<CredentialExchangeRecord> {
+  public async declineOffer(
+    credentialRecordId: string,
+    options?: DeclineCredentialOfferOptions
+  ): Promise<CredentialExchangeRecord> {
     const credentialRecord = await this.getById(credentialRecordId)
     credentialRecord.assertState(CredentialState.OfferReceived)
 
     // with version we can get the Service
     const protocol = this.getProtocol(credentialRecord.protocolVersion)
+    if (options?.sendProblemReport) {
+      await this.sendProblemReport({
+        credentialRecordId,
+        description: options.problemReportDescription ?? 'Offer declined',
+      })
+    }
+
     await protocol.updateState(this.agentContext, credentialRecord, CredentialState.Declined)
 
     return credentialRecord
@@ -355,6 +379,8 @@ export class CredentialsApi<CPs extends CredentialProtocol[]> implements Credent
       credentialRecord,
       comment: options.comment,
       autoAcceptCredential: options.autoAcceptCredential,
+      goalCode: options.goalCode,
+      goal: options.goal,
     })
 
     const outboundMessageContext = await getOutboundMessageContext(this.agentContext, {
@@ -384,6 +410,8 @@ export class CredentialsApi<CPs extends CredentialProtocol[]> implements Credent
       credentialFormats: options.credentialFormats,
       comment: options.comment,
       autoAcceptCredential: options.autoAcceptCredential,
+      goalCode: options.goalCode,
+      goal: options.goal,
     })
 
     this.logger.debug('Offer Message successfully created', { message })
@@ -532,29 +560,40 @@ export class CredentialsApi<CPs extends CredentialProtocol[]> implements Credent
   /**
    * Send problem report message for a credential record
    * @param credentialRecordId The id of the credential record for which to send problem report
-   * @param message message to send
    * @returns credential record associated with the credential problem report message
    */
   public async sendProblemReport(options: SendCredentialProblemReportOptions) {
     const credentialRecord = await this.getById(options.credentialRecordId)
-    if (!credentialRecord.connectionId) {
-      throw new CredoError(`No connectionId found for credential record '${credentialRecord.id}'.`)
-    }
-    const connectionRecord = await this.connectionService.getById(this.agentContext, credentialRecord.connectionId)
 
     const protocol = this.getProtocol(credentialRecord.protocolVersion)
-    const { message } = await protocol.createProblemReport(this.agentContext, {
+
+    const offerMessage = await protocol.findOfferMessage(this.agentContext, credentialRecord.id)
+
+    const { message: problemReport } = await protocol.createProblemReport(this.agentContext, {
       description: options.description,
       credentialRecord,
     })
-    message.setThread({
-      threadId: credentialRecord.threadId,
-      parentThreadId: credentialRecord.parentThreadId,
-    })
+
+    // Use connection if present
+    const connectionRecord = credentialRecord.connectionId
+      ? await this.connectionService.getById(this.agentContext, credentialRecord.connectionId)
+      : undefined
+    connectionRecord?.assertReady()
+
+    // If there's no connection (so connection-less, we require the state to be offer received)
+    if (!connectionRecord) {
+      credentialRecord.assertState(CredentialState.OfferReceived)
+
+      if (!offerMessage) {
+        throw new CredoError(`No offer message found for credential record with id '${credentialRecord.id}'`)
+      }
+    }
+
     const outboundMessageContext = await getOutboundMessageContext(this.agentContext, {
-      message,
-      associatedRecord: credentialRecord,
+      message: problemReport,
       connectionRecord,
+      associatedRecord: credentialRecord,
+      lastReceivedMessage: offerMessage ?? undefined,
     })
     await this.messageSender.sendMessage(outboundMessageContext)
 

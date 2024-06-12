@@ -16,7 +16,7 @@ import type { V1MessagePickupProtocol, V2MessagePickupProtocol } from './protoco
 import type { MessagePickupProtocol } from './protocol/MessagePickupProtocol'
 import type { MessagePickupRepository } from './storage/MessagePickupRepository'
 
-import { ReplaySubject, Subject, filter, firstValueFrom, takeUntil, timeout } from 'rxjs'
+import { ReplaySubject, Subject, filter, first, firstValueFrom, takeUntil, timeout } from 'rxjs'
 
 import { AgentContext } from '../../agent'
 import { EventEmitter } from '../../agent/EventEmitter'
@@ -222,7 +222,6 @@ export class MessagePickupApi<MPPs extends MessagePickupProtocol[] = [V1MessageP
     const replaySubject = new ReplaySubject(1)
 
     if (options.awaitCompletion) {
-      // Listen for response to our feature query
       this.eventEmitter
         .observable<MessagePickupCompletedEvent>(MessagePickupEventTypes.MessagePickupCompleted)
         .pipe(
@@ -230,6 +229,8 @@ export class MessagePickupApi<MPPs extends MessagePickupProtocol[] = [V1MessageP
           takeUntil(this.stop$),
           // filter by connection id
           filter((e) => e.payload.connection.id === connectionRecord.id),
+          // Only wait for first event that matches the criteria
+          first(),
           // If we don't receive all messages within timeoutMs miliseconds (no response, not supported, etc...) error
           timeout({
             first: options.awaitCompletionTimeoutMs ?? 10000,
@@ -239,7 +240,9 @@ export class MessagePickupApi<MPPs extends MessagePickupProtocol[] = [V1MessageP
         .subscribe(replaySubject)
     }
 
-    await this.messageSender.sendMessage(outboundMessageContext)
+    // For picking up messages we prefer a long-lived transport session, so we will set a higher priority to
+    // WebSocket endpoints. However, it is not extrictly required.
+    await this.messageSender.sendMessage(outboundMessageContext, { transportPriority: { schemes: ['wss', 'ws'] } })
 
     if (options.awaitCompletion) {
       await firstValueFrom(replaySubject)
@@ -254,18 +257,19 @@ export class MessagePickupApi<MPPs extends MessagePickupProtocol[] = [V1MessageP
    */
   public async setLiveDeliveryMode(options: SetLiveDeliveryModeOptions): Promise<SetLiveDeliveryModeReturnType> {
     const connectionRecord = await this.connectionService.getById(this.agentContext, options.connectionId)
-
     const protocol = this.getProtocol(options.protocolVersion)
     const { message } = await protocol.setLiveDeliveryMode(this.agentContext, {
       connectionRecord,
       liveDelivery: options.liveDelivery,
     })
 
+    // Live mode requires a long-lived transport session, so we'll require WebSockets to send this message
     await this.messageSender.sendMessage(
       new OutboundMessageContext(message, {
         agentContext: this.agentContext,
         connection: connectionRecord,
-      })
+      }),
+      { transportPriority: { schemes: ['wss', 'ws'], restrictive: options.liveDelivery } }
     )
   }
 }

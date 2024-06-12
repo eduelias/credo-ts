@@ -35,7 +35,7 @@ export * from './storage/BaseRecord'
 export { DidCommMessageRecord, DidCommMessageRole, DidCommMessageRepository } from './storage/didcomm'
 export { Repository } from './storage/Repository'
 export * from './storage/RepositoryEvents'
-export { StorageService, Query, SimpleQuery, BaseRecordConstructor } from './storage/StorageService'
+export { StorageService, Query, QueryOptions, SimpleQuery, BaseRecordConstructor } from './storage/StorageService'
 export * from './storage/migration'
 export { getDirFromFilePath, joinUriParts } from './utils/path'
 export { InjectionSymbols } from './constants'
@@ -74,6 +74,7 @@ export {
   isDid,
   asArray,
   equalsIgnoreOrder,
+  DateTransformer,
 } from './utils'
 export * from './logger'
 export * from './error'
