@@ -80,7 +80,12 @@ export * from './logger'
 export * from './error'
 export * from './wallet/error'
 export { VersionString } from './utils/version'
-export { parseMessageType, IsValidMessageType, replaceLegacyDidSovPrefix } from './utils/messageType'
+export {
+  type ParsedMessageType,
+  parseMessageType,
+  IsValidMessageType,
+  replaceLegacyDidSovPrefix,
+} from './utils/messageType'
 export type { Constructor, Constructable } from './utils/mixins'
 export * from './agent/Events'
 export * from './crypto'
@@ -88,7 +93,6 @@ export * from './crypto'
 // TODO: clean up util exports
 export { encodeAttachment, isLinkedAttachment } from './utils/attachment'
 export type { Optional } from './utils'
-export { Hasher, HashName } from './utils/Hasher'
 export { MessageValidator } from './utils/MessageValidator'
 export { LinkedAttachment, LinkedAttachmentOptions } from './utils/LinkedAttachment'
 import { parseInvitationUrl } from './utils/parseInvitation'

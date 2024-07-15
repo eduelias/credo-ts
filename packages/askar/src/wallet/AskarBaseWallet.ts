@@ -24,6 +24,7 @@ import {
   WalletError,
   Key,
   TypedArrayEncoder,
+  KeyBackend,
 } from '@credo-ts/core'
 import { CryptoBox, Store, Key as AskarKey, keyAlgFromString } from '@hyperledger/aries-askar-shared'
 import BigNumber from 'bn.js'
@@ -35,6 +36,7 @@ import {
   isKeyTypeSupportedByAskarForPurpose,
   keyTypesSupportedByAskar,
 } from '../utils'
+import { convertToAskarKeyBackend } from '../utils/askarKeyBackend'
 
 import { didcommV1Pack, didcommV1Unpack } from './didcommV1'
 
@@ -125,7 +127,12 @@ export abstract class AskarBaseWallet implements Wallet {
    * Create a key with an optional seed and keyType.
    * The keypair is also automatically stored in the wallet afterwards
    */
-  public async createKey({ seed, privateKey, keyType }: WalletCreateKeyOptions): Promise<Key> {
+  public async createKey({
+    seed,
+    privateKey,
+    keyType,
+    keyBackend = KeyBackend.Software,
+  }: WalletCreateKeyOptions): Promise<Key> {
     try {
       if (seed && privateKey) {
         throw new WalletError('Only one of seed and privateKey can be set')
@@ -149,7 +156,7 @@ export abstract class AskarBaseWallet implements Wallet {
             ? AskarKey.fromSecretBytes({ secretKey: privateKey, algorithm })
             : seed
             ? AskarKey.fromSeed({ seed, algorithm })
-            : AskarKey.generate(algorithm)
+            : AskarKey.generate(algorithm, convertToAskarKeyBackend(keyBackend))
 
           // FIXME: we need to create a separate const '_key' so TS definitely knows _key is defined in the session callback.
           // This will be fixed once we use the new 'using' syntax
@@ -423,6 +430,28 @@ export abstract class AskarBaseWallet implements Wallet {
       // generate an 80-bit nonce suitable for AnonCreds proofs
       const nonce = CryptoBox.randomNonce().slice(0, 10)
       return new BigNumber(nonce).toString()
+    } catch (error) {
+      if (!isError(error)) {
+        throw new CredoError('Attempted to throw error, but it was not of type Error', { cause: error })
+      }
+      throw new WalletError('Error generating nonce', { cause: error })
+    }
+  }
+
+  public getRandomValues(length: number): Uint8Array {
+    try {
+      const buffer = new Uint8Array(length)
+      const CBOX_NONCE_LENGTH = 24
+
+      const genCount = Math.ceil(length / CBOX_NONCE_LENGTH)
+      const buf = new Uint8Array(genCount * CBOX_NONCE_LENGTH)
+      for (let i = 0; i < genCount; i++) {
+        const randomBytes = CryptoBox.randomNonce()
+        buf.set(randomBytes, CBOX_NONCE_LENGTH * i)
+      }
+      buffer.set(buf.subarray(0, length))
+
+      return buffer
     } catch (error) {
       if (!isError(error)) {
         throw new CredoError('Attempted to throw error, but it was not of type Error', { cause: error })
