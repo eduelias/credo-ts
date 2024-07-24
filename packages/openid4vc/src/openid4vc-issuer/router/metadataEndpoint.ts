@@ -10,7 +10,6 @@ export function configureIssuerMetadataEndpoint(router: Router) {
     '/.well-known/openid-credential-issuer',
     (_request: OpenId4VcIssuanceRequest, response: Response, next) => {
       const { agentContext, issuer } = getRequestContext(_request)
-
       try {
         const openId4VcIssuerService = agentContext.dependencyManager.resolve(OpenId4VcIssuerService)
         const issuerMetadata = openId4VcIssuerService.getIssuerMetadata(agentContext, issuer)
@@ -19,7 +18,9 @@ export function configureIssuerMetadataEndpoint(router: Router) {
           token_endpoint: issuerMetadata.tokenEndpoint,
           credential_endpoint: issuerMetadata.credentialEndpoint,
           authorization_server: issuerMetadata.authorizationServer,
+          authorization_servers: issuerMetadata.authorizationServer ? [issuerMetadata.authorizationServer] : undefined,
           credentials_supported: issuerMetadata.credentialsSupported,
+          credential_configurations_supported: issuerMetadata.credentialConfigurationsSupported,
           display: issuerMetadata.issuerDisplay,
         } satisfies CredentialIssuerMetadata
 
